@@ -164,18 +164,21 @@ if __name__ == '__main__':
         f.readinto(rom[0x200:])
 
     chip.dump()
+    start_time = time()
+    IPF = 0 #instructions per frame
     while True:
-        start_time = time()
         data = chip.fetch()
         try:
             chip.decode_and_execute(data)
+            IPF += 1
         except Exception as e:
             here(traceback.format_exc())
         #chip.dump(True, -1, 60)
-        if chip.redraw:
-            chip.render()
         elapsed = time()-start_time
-        print(f"time elapsed: {elapsed}, FPS = {1/elapsed}\r", end='')
+        if elapsed > (1/60):
+            if chip.redraw:
+                chip.render()
+            start_time = time()# - (elapsed - 1/60)
+            print(f"instructions in last frame = {IPF}, time elapsed: {elapsed}, FPS = {1/elapsed}\r", end='')
+            IPF = 0
         #input()
-        wait_time = max(0, 1/60 - elapsed)
-        sleep(wait_time)
