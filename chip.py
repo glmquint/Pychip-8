@@ -146,7 +146,7 @@ class Chip:
                         self.V[0xF] = 1
                     else:
                         self.display = self.display[:offset] + '1' + self.display[offset+1:]
-        self.redraw = True
+                    self.redraw = True
 
         show_disasm(f"drw v{x} v{y} {n}")
 
