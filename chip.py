@@ -111,22 +111,22 @@ class Chip:
             raise Exception("Halt")
         else:
             self.pc = jmp_addr
-        show_disasm(f"jp {jmp_addr}")
+        show_disasm(f"jp {jmp_addr:#04x}")
 
     def ld_vx_byte(self, data):
         x = unpack('<B', byte_and(bytes([data[0]]), b'\x0f'))[0]
         self.V[x] = data[1]
-        show_disasm(f"ld v{x} {hex(data[1])}")
+        show_disasm(f"ld v{x} {data[1]:#04x}")
 
     def add_vx_byte(self, data):
         x = unpack('<B', byte_and(bytes([data[0]]), b'\x0f'))[0]
         self.V[x] += data[1]
-        show_disasm(f"add v{x} {data[1]}")
+        show_disasm(f"add v{x} {data[1]:#04x}")
 
     def ld_i_addr(self, data):
         a = byte_and(data, b'\x0f\xff')
         self.I = unpack('>H', a)[0]
-        show_disasm(f"ld I {a.hex()}")
+        show_disasm(f"ld I 0x{a.hex()}")
 
     def drw_vx_vy_nibble(self, data):
         x = unpack('>B', byte_and(bytes([data[0]]), b'\x0f'))[0]
