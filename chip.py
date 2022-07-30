@@ -6,7 +6,7 @@ from struct import unpack, pack
 import traceback
 from time import time
 
-DEBUG = False
+DEBUG = True
 
 def here(msg=''):
     print(f"REACHED HERE ({msg})")
@@ -168,6 +168,17 @@ if __name__ == '__main__':
     IPF = 0 #instructions per frame
     while True:
         data = chip.fetch()
+        if DEBUG:
+            done = False
+            while not done:
+                cmd = input('\n(s)tep, (c)ontinue, (d)ump > ')
+                if cmd == 's':
+                    done = True
+                elif cmd == 'c':
+                    DEBUG = False
+                    done = True
+                elif cmd == 'd':
+                    chip.dump()
         try:
             chip.decode_and_execute(data)
             IPF += 1
@@ -181,4 +192,3 @@ if __name__ == '__main__':
             start_time = time()# - (elapsed - 1/60)
             print(f"instructions in last frame = {IPF}, time elapsed: {elapsed}, FPS = {1/elapsed}\r", end='')
             IPF = 0
-        #input()
