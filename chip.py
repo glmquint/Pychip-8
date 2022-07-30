@@ -4,6 +4,7 @@ from time import sleep
 from byte_operations import *
 from struct import unpack, pack
 import traceback
+from time import time
 
 def here(msg=''):
     print(f"REACHED HERE ({msg})")
@@ -12,57 +13,52 @@ def here(msg=''):
 def usage(argv0):
     print(f"USAGE: python3 {argv0} <rom>")
 
+def debug_bitplane(bitplane, width):
+    for i in range(0, len(bitplane), width):
+        print(bitplane[i:i+width])
+
 SCREEN_WIDTH = 64
 SCREEN_HEIGHT = 32
 
 class Chip:
     memory      = bytearray([0] * 4096)
-    display     = bytearray([0] * (8*4)) # 64x32 pixels monochrome
-    pc          = bytearray(b'\x02\x00')
-    I           = bytearray([0] * 2)
-    sp          = bytearray([0] * 2)
-    delay_timer = bytearray([0] * 1)
-    sound_timer = bytearray([0] * 1)
-    V           = [bytearray([0] * 1)]*16
+    display     = '0'*(SCREEN_WIDTH * SCREEN_HEIGHT) 
+    pc          = 0x0200    
+    I           = 0x0000    
+    sp          = 0x0000    
+    delay_timer = 0x00      
+    sound_timer = 0x00      
+    V           = [0x00]*16 
 
     def dump(self, show_memory=True, start=0, end=-1):
         if start == -1:
-            start = int.from_bytes(self.pc, 'big')
+            start = self.pc 
             end += start
         elif end < 0:
             end = len(self.memory)
         print(f"\t\t===BEGIN DUMP (from {start} to {end})===")
         bytes_per_line = 8
         if show_memory:
-            #print(f"memory = {self.memory.hex()}")
             for y in range(start, end, bytes_per_line):
                 print(f"{y:#0{5}x}\t| ", end='')
                 for x in range(bytes_per_line):
                     print(f"{self.memory[y + x]:#0{4}x} ", end='')
                 print("|")
         print("display = ")
-        byte_width = 8
-        for i in range(0, len(self.display), byte_width):
-            print(f"\t{self.display[i:i+byte_width]}")
-        bitarray = ''.join(format(byte, '064b') for byte in self.display)
-        #bit_width = 64
-        #for i in range(0, len(bitarray), bit_width):
-            #print(f"\t{i:#0{5}x}: {bitarray[i:i+bit_width]}")
+        debug_bitplane(self.display, SCREEN_WIDTH)
 
-        print(f"pc = {self.pc.hex()} ({int.from_bytes(self.pc, 'big')})")
-        print(f"I = {self.I.hex()} ({int.from_bytes(self.I, 'big')})")
-        print(f"sp = {self.sp.hex()} ({int.from_bytes(self.sp, 'big')})")
-        print(f"delay_timer = {self.delay_timer.hex()} ({int.from_bytes(self.delay_timer, 'big')})")
-        print(f"sound_timer = {self.sound_timer.hex()} ({int.from_bytes(self.sound_timer, 'big')})")
+        print(f"pc = {hex(self.pc)} ({self.pc})")
+        print(f"I = {hex(self.I)} ({self.I})")
+        print(f"sp = {hex(self.sp)} ({self.sp})")
+        print(f"delay_timer = {hex(self.delay_timer)} ({self.delay_timer})")
+        print(f"sound_timer = {hex(self.sound_timer)} ({self.sound_timer})")
         for x in range(len(self.V)):
-            print(f"V{x} = {self.V[x].hex()} ({int.from_bytes(self.V[x], 'big')})")
+            print(f"V{x} = {hex(self.V[x])} ({self.V[x]})")
         print("\t\t===END DUMP===")
 
     def fetch(self):
-        pc_dec = unpack('>h', self.pc)[0]
-        fetched = self.memory[pc_dec:pc_dec+2]
-        self.pc = pack('>H', pc_dec+2)
-        return fetched
+        self.pc += 2
+        return self.memory[self.pc-2:self.pc]
 
     def decode_and_execute(self, data):
         print(f"decoding {data.hex() = }")
@@ -83,18 +79,19 @@ class Chip:
             raise Exception(f"Unimplemented instruction ({data.hex()} @ pc:{self.pc.hex()})")
 
     def render(self):
-        #bitarray = bin(int.from_bytes(self.display, 'little')).strip('0b').zfill(64*32)
-        bitarray = ''.join(format(byte, '08b') for byte in self.display)
-        print(f"now rendering {len(bitarray)} pixels: {bitarray = }")
-        #draw(SCREEN_WIDTH, SCREEN_HEIGHT, bitarray)
+        #print(f"now rendering {len(self.display)} pixels:")
+        #debug_bitplane(self.display, SCREEN_WIDTH)
+        draw(SCREEN_WIDTH, SCREEN_HEIGHT, self.display)
+
+
 
     def cls(self):
-        display = bytearray([0] * (8*4)) # 64x32 pixels monochrome
+        self.display = '0'*(SCREEN_WIDTH * SCREEN_HEIGHT)
         print(f"[DISM] cls;")
 
     def jp_addr(self, data):
-        jmp_addr = byte_and(data, b'\x0f\xff')
-        if unpack('>H', self.pc)[0] == unpack('>H', jmp_addr)[0]+2:
+        jmp_addr = unpack('>H', byte_and(data, b'\x0f\xff'))[0]
+        if False: #self.pc == jmp_addr+2:
             raise Exception("Halt")
         else:
             self.pc = jmp_addr
@@ -102,35 +99,36 @@ class Chip:
 
     def ld_vx_byte(self, data):
         x = unpack('<B', byte_and(bytes([data[0]]), b'\x0f'))[0]
-        self.V[x] = bytearray([data[1]])
+        self.V[x] = data[1]
         print(f"[DISM] ld v{x} {hex(data[1])};")
 
     def add_vx_byte(self, data):
         x = unpack('<B', byte_and(bytes([data[0]]), b'\x0f'))[0]
-        #self.V[x] = bytearray([int.from_bytes(self.V[x], 'big') + data[1]])
-        self.V[x] = bytearray([unpack('<B', self.V[x])[0] + data[1]])
+        self.V[x] += data[1]
         print(f"[DISM] add v{x} {data[1]};")
 
     def ld_i_addr(self, data):
         a = byte_and(data, b'\x0f\xff')
-        self.I = a
+        self.I = unpack('>H', a)[0]
         print(f"[DISM] ld I {a.hex()};")
 
     def drw_vx_vy_nibble(self, data):
         x = unpack('>B', byte_and(bytes([data[0]]), b'\x0f'))[0]
         y = unpack('>B', byte_and(bytes([data[1]]), b'\xf0'))[0] >> 4
         n = unpack('>B', byte_and(bytes([data[1]]), b'\x0f'))[0]
-        intI = unpack('>H', self.I)[0]
-        sprite = self.memory[intI:intI+n]
-        here(f"{x = } V[{x}] = {hex(unpack('>B', self.V[x])[0])}, {y = } V[{y}] = {hex(unpack('>B', self.V[y])[0])}, {n = }, {self.I.hex() = }, {intI = }, {sprite = }")
+        sprite = self.memory[self.I:self.I+n]
+        #print(f"{x = } V[{x}] = {hex(self.V[x])}, {y = } V[{y}] = {hex(self.V[y])}, {n = }, {hex(self.I) = }, {sprite = }")
+        
         for i in range(n):
-            #self.display[((unpack('>B', self.V[y])[0]+i)//8)*SCREEN_WIDTH//8+unpack('>B', self.V[x])[0]] = sprite[i]
-            d_offset = (unpack('>B', self.V[y])[0] * SCREEN_WIDTH//8 + unpack('>B', self.V[x])[0]) // 8 + i
-            print(d_offset, len(self.display))
-            self.display[d_offset] = sprite[i]
-            #print(f"{((y//8)+i//8)*SCREEN_WIDTH//8+x} = {sprite[i]}")
-        #input()
-        print(f"[DISM] drw v{x} v{y} {n}")
+            bit_sprite = f"{sprite[i]:08b}"
+            offset = (self.V[y]+i)*SCREEN_WIDTH + self.V[x]
+            new_plane = '0'*(offset) + bit_sprite + '0'*(SCREEN_WIDTH*SCREEN_HEIGHT - len(bit_sprite) - offset)
+            res_plane = ''
+            for a, b in zip(self.display, new_plane):
+                res_plane += str(int(a) | int(b))
+            self.display = res_plane
+
+        print(f"[DISM] drw v{x} v{y} {n};")
 
 
 
@@ -143,17 +141,19 @@ if __name__ == '__main__':
     chip = Chip()
     with open(argv[1], 'rb') as f:
         rom = memoryview(chip.memory)
-        #rom = bytearray(f.read())
         f.readinto(rom[0x200:])
 
     chip.dump()
     while True:
+        start_time = time()
         data = chip.fetch()
         try:
             chip.decode_and_execute(data)
         except Exception as e:
             here(traceback.format_exc())
-        chip.dump(True, -1, 60)
+        #chip.dump(True, -1, 60)
         chip.render()
-        input()
-        sleep(1/60)
+        elapsed = time()-start_time
+        print(f"time elapsed: {elapsed}, FPS = {1/elapsed}")
+        wait_time = max(0, 1/60 - elapsed)
+        sleep(wait_time)
