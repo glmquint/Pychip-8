@@ -5,6 +5,7 @@ from byte_operations import *
 from struct import unpack, pack
 import traceback
 from time import time
+from random import randbytes
 
 DEBUG = False
 STOP_ON_EXCEPTION = False
@@ -68,6 +69,17 @@ class Chip:
     V           = [0x00]*16 
     redraw      = False
 
+    def sanity_check(self):
+        assert len(self.memory) == 0x1000, f"{chip.pc:#04x}"
+        assert len(self.display) == (SCREEN_WIDTH * SCREEN_HEIGHT), f"{chip.pc:#04x}"
+        assert self.pc >= 0 and self.pc < 0x1000, f"{chip.pc:#04x}"
+        assert self.I  >= 0 and self.I  < 0x1000, f"{chip.pc:#04x}"
+        assert self.sp >= 0 and self.sp < 0x100 , f"{chip.pc:#04x}"
+        assert self.delay_timer >= 0 and self.delay_timer < 0x100, f"{chip.pc:#04x}"
+        assert self.sound_timer >= 0 and self.sound_timer < 0x100, f"{chip.pc:#04x}"
+        for i in range(0xf):
+            assert self.V[i] >= 0 and self.V[i] < 0x100, f"{chip.pc:#04x}"
+
     def dump(self, show_memory=True, start=0, end=-1):
         if start == -1:
             start = self.pc 
@@ -125,6 +137,8 @@ class Chip:
             self.sne_vx_vy(data)
         elif high_nibble == b'\xa0\x00':
             self.ld_i_addr(data)
+        elif high_nibble == b'\xc0\x00':
+            self.rnd(data)
         elif high_nibble == b'\xd0\x00':
             self.drw_vx_vy_nibble(data)
         elif high_nibble == b'\xf0\x00':
@@ -250,6 +264,10 @@ class Chip:
         self.I = a
         show_disasm(f"ld I 0x{a:#04x}")
 
+    def rnd(self, data):
+        x = data[0] & 0x0f
+        self.V[x] = int.from_bytes(randbytes(1), 'big') & data[1]
+
     def drw_vx_vy_nibble(self, data):
         x = data[0] & 0x0f
         y = (data[1] & 0xf0) >> 4
@@ -326,7 +344,7 @@ if __name__ == '__main__':
     start_time = time()
     IPF = 0 #instructions per frame
     while True:
-        assert len(chip.memory) == 0x1000, f"{chip.pc:#04x}"
+        chip.sanity_check() 
         if DEBUG:
             done = False
             while not done:
