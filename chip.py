@@ -6,7 +6,8 @@ from struct import unpack, pack
 import traceback
 from time import time
 
-DEBUG = True
+DEBUG = False
+STOP_ON_EXCEPTION = False
 SHOW_DISASM = True
 O_HLT_ON_LOOP = False
 
@@ -32,9 +33,29 @@ def log(msg, end='\n'):
         else:
             print(f"[DEBUG]: {msg}")
 
-SCREEN_WIDTH = 64
-SCREEN_HEIGHT = 32
-STACK_BASE = 0x0200
+SCREEN_WIDTH            = 64
+SCREEN_HEIGHT           = 32
+STACK_BASE              = 0x0200
+HEXDIGIT_SPRITES_BASE   = 0x0000
+HEXDIGIT_SPRITES = bytearray([  
+        0xF0, 0x90, 0x90, 0x90, 0xF0, # 0
+        0x20, 0x60, 0x20, 0x20, 0x70, # 1
+        0xF0, 0x10, 0xF0, 0x80, 0xF0, # 2
+        0xF0, 0x10, 0xF0, 0x10, 0xF0, # 3
+        0x90, 0x90, 0xF0, 0x10, 0x10, # 4
+        0xF0, 0x80, 0xF0, 0x10, 0xF0, # 5
+        0xF0, 0x80, 0xF0, 0x90, 0xF0, # 6
+        0xF0, 0x10, 0x20, 0x40, 0x40, # 7
+        0xF0, 0x90, 0xF0, 0x90, 0xF0, # 8
+        0xF0, 0x90, 0xF0, 0x10, 0xF0, # 9
+        0xF0, 0x90, 0xF0, 0x90, 0x90, # A
+        0xE0, 0x90, 0xE0, 0x90, 0xE0, # B
+        0xF0, 0x80, 0x80, 0x80, 0xF0, # C
+        0xE0, 0x90, 0x90, 0x90, 0xE0, # D
+        0xF0, 0x80, 0xF0, 0x80, 0xF0, # E
+        0xF0, 0x80, 0xF0, 0x80, 0x80  # F
+    ])
+
 
 class Chip:
     memory      = bytearray([0] * 4096)
@@ -109,7 +130,7 @@ class Chip:
         elif high_nibble == b'\xf0\x00':
             self.extra(data)
         else:
-            raise Exception(f"Unimplemented instruction ({data.hex()} @ pc:{self.pc:#04x})")
+            raise Exception(f"Invalid instruction ({data.hex()} @ pc:{self.pc:#04x})")
 
     def render(self):
         #log(f"now rendering {len(self.display)} pixels:")
@@ -133,7 +154,7 @@ class Chip:
     def jp_addr(self, data):
         jmp_addr = unpack('>H', data)[0] & 0x0fff
         if O_HLT_ON_LOOP and self.pc == jmp_addr+2:
-            raise Exception("Halt")
+            raise Exception("Halt (infinite loop detected)")
         else:
             self.pc = jmp_addr
         show_disasm(f"jp {jmp_addr:#04x}")
@@ -151,20 +172,20 @@ class Chip:
         x = data[0] & 0x0f
         if self.V[x] == data[1]:
             self.pc += 2
-        show_disasm(f"se V{x:01x} {data[1]:#04x}")
+        show_disasm(f"se v{x:01x} {data[1]:#04x}")
 
     def sne_vx_byte(self, data):
         x = data[0] & 0x0f
         if self.V[x] != data[1]:
             self.pc += 2
-        show_disasm(f"sne V{x:01x} {data[1]:#04x}")
+        show_disasm(f"sne v{x:01x} {data[1]:#04x}")
 
     def se_vx_vy(self, data):
         x = data[0] & 0x0f
-        y = (data[1] & 0xf0) >> 4 ## ??
+        y = (data[1] & 0xf0) >> 4
         if self.V[x] == self.V[y]:
             self.pc += 2
-        show_disasm(f"se V{x:01x} V{y:01x}")
+        show_disasm(f"se v{x:01x} v{y:01x}")
 
     def ld_vx_byte(self, data):
         x = data[0] & 0x0f
@@ -215,14 +236,14 @@ class Chip:
             self.V[x] = (self.V[x] << 1) & 0xff
             show_disasm(f"shl v{x:01x} (, v{y:01x})")
         else:
-            raise Exception(f"Unrecognized logic or arithmetic instruction instruction {data}")
+            raise Exception(f"Unrecognized logic or arithmetic instruction {data}")
 
     def sne_vx_vy(self, data):
         x = data[0] & 0x0f
-        y = (data[1] & 0x0f) >> 4
-        if self.V[x] != self.V[y]:
+        y = (data[1] & 0xf0) >> 4
+        if self.V[x] != self.V[y]: 
             self.pc += 2
-        show_disasm(f"sne V{x:01x} V{y:01x}")
+        show_disasm(f"sne v{x:01x} v{y:01x}")
 
     def ld_i_addr(self, data):
         a = unpack('>H', data)[0] & 0x0fff
@@ -249,34 +270,44 @@ class Chip:
                         self.display = self.display[:offset] + '1' + self.display[offset+1:]
                     self.redraw = True
 
-        show_disasm(f"drw v{x} v{y} {n}")
+        show_disasm(f"drw v{x:01x} v{y:01x} {n}")
 
     def extra(self, data):
         x = data[0] & 0x0f
         if data[1] == 0x07:
             self.V[x] = self.delay_timer
-            show_disasm(f"ld v{x}, dt")
+            show_disasm(f"ld v{x:01x}, dt")
         elif data[1] == 0x0a:
-            self.
-            show_disasm(f"ld v{x} K")
+            raise Exception("Unimplemented keyboard interaction instruction {data.hex()}")
+            show_disasm(f"ld v{x:01x} K")
         elif data[1] == 0x15:
-            ld_dt_vx
+            self.delay_timer = self.V[x]
+            show_disasm(f"ld dt v{x:01x}")
         elif data[1] == 0x18:
-            ld_st_vx
+            self.sound_timer = self.V[x]
+            show_disasm(f"ld st v{x:01x}")
         elif data[1] == 0x1e:
-            add_i_vx
+            self.I += self.V[x]
+            self.I &= 0xffff
+            show_disasm(f"add i v{x:01x}")
         elif data[1] == 0x29:
-            ld_f_vx
+            self.I = HEXDIGIT_SPRITES_BASE + (self.V[x] * 5)
+            show_disasm(f"ld f v{x:01x}")
         elif data[1] == 0x33:
-            ld_b_vx
+            raise Exception("Unimplemented BCD soring instruction {data.hex()}")
+            show_disasm(f"ld b v{x:01x}")
         elif data[1] == 0x55:
-            ld_[i]_vx
+            for i in range(x+1):
+                self.memory = self.memory[:self.I+i] + bytes([self.V[i]]) + self.memory[self.I+i+1:]
+            show_disasm(f"ld [i], v{x:01x}")
         elif data[1] == 0x65:
-            ld_vx_[i]
+            for i in range(x+1):
+                self.V[x] = self.memory[self.I+i]
+            show_disasm(f"ld v{x:01x}, [i]")
 
 
 
-breakpoints = [0x2be]
+breakpoints = []#[0x3a0]
 
 if __name__ == '__main__':
     argv.append('roms/test_opcode.ch8') # FIXME: temporary
@@ -286,6 +317,7 @@ if __name__ == '__main__':
         quit()
 
     chip = Chip()
+    chip.memory = chip.memory[:HEXDIGIT_SPRITES_BASE] + HEXDIGIT_SPRITES + chip.memory[HEXDIGIT_SPRITES_BASE + len(HEXDIGIT_SPRITES):]
     with open(argv[1], 'rb') as f:
         rom = memoryview(chip.memory)
         f.readinto(rom[0x200:])
@@ -294,6 +326,7 @@ if __name__ == '__main__':
     start_time = time()
     IPF = 0 #instructions per frame
     while True:
+        assert len(chip.memory) == 0x1000, f"{chip.pc:#04x}"
         if DEBUG:
             done = False
             while not done:
@@ -334,7 +367,7 @@ if __name__ == '__main__':
             IPF += 1
         except Exception as e:
             print(traceback.format_exc())
-            DEBUG = True
+            DEBUG = STOP_ON_EXCEPTION
         if chip.pc in breakpoints:
             print(f"\nHit breakpoint! pc: {chip.pc:#04x}")
             DEBUG = True
