@@ -5,11 +5,15 @@ def test():
     print("\033[0;32mOK this is green\033[00m")
     print("\033[0;31mERROR this is red\033[00m")
 
-def draw_from_arr(SCREEN_WIDTH, SCREEN_HEIGHT, arr):
+def draw_from_arr(SCREEN_WIDTH, SCREEN_HEIGHT, arr, buzzer):
     print("\033[2J", end='') #clear screen
     #print(f"\033[{SCREEN_HEIGHT+2}Bbegin", end='')
     #print(f"\033[{SCREEN_HEIGHT}A", end='')
     to_print = []
+    if buzzer > 0:
+        to_print.append("\033[0;5m")
+    else:
+        to_print.append("\033[0;0m")
     to_print.append("┌")
     for _ in range(2*SCREEN_WIDTH):
         to_print.append("─")
@@ -33,6 +37,7 @@ def draw_from_arr(SCREEN_WIDTH, SCREEN_HEIGHT, arr):
     for _ in range(2*SCREEN_WIDTH):
         to_print.append("─")
     to_print.append("┘")
+    to_print.append("\033[0;0m")
 
     print(''.join(to_print))
     stdout.flush()

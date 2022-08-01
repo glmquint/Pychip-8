@@ -135,7 +135,7 @@ class Chip:
     def render(self):
         #log(f"now rendering {len(self.display)} pixels:")
         #debug_bitplane(self.display, SCREEN_WIDTH)
-        draw(SCREEN_WIDTH, SCREEN_HEIGHT, self.display)
+        draw(SCREEN_WIDTH, SCREEN_HEIGHT, self.display, self.delay_timer)
         self.redraw = False
 
 
@@ -310,8 +310,8 @@ class Chip:
 breakpoints = []#[0x3a0]
 
 if __name__ == '__main__':
-    argv.append('roms/test_opcode.ch8') # FIXME: temporary
-    #argv.append('roms/IBM Logo.ch8') # FIXME: temporary
+    #argv.append('roms/test_opcode.ch8') # FIXME: temporary
+    argv.append('roms/IBM Logo.ch8') # FIXME: temporary
     if len(argv) < 2:
         usage(argv[0])
         quit()
@@ -354,10 +354,14 @@ if __name__ == '__main__':
                     chip.render()
         elapsed = time()-start_time
         if elapsed > (1/60):
+            if chip.delay_timer > 0:
+                chip.delay_timer -= 1
+            if chip.sound_timer > 0:
+                chip.sound_timer -= 1
             if chip.redraw:
                 chip.render()
             start_time = time()# - (elapsed - 1/60)
-            print(f"instructions in last frame = {IPF}, time elapsed: {elapsed}, FPS = {1/elapsed}\r", end='')
+            #print(f"instructions in last frame = {IPF}, time elapsed: {elapsed}, FPS = {1/elapsed}\r", end='')
             IPF = 0
 
         data = chip.fetch()
