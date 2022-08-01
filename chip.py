@@ -7,6 +7,7 @@ import traceback
 from time import time
 
 DEBUG = True
+SHOW_DISASM = True
 O_HLT_ON_LOOP = False
 
 def here(msg=''):
@@ -21,7 +22,7 @@ def debug_bitplane(bitplane, width):
         log(bitplane[i:i+width])
 
 def show_disasm(disasm):
-    if DEBUG:
+    if DEBUG and SHOW_DISASM:
         print(f"[DISM] {disasm};")
 
 def log(msg, end='\n'):
@@ -58,7 +59,7 @@ class Chip:
             for y in range(start, end, bytes_per_line):
                 log(f"{y:#0{5}x}\t| ", end='')
                 for x in range(bytes_per_line):
-                    log(f"{self.memory[y + x]:#0{4}x} ", end='')
+                    log(f"{self.memory[y + x]:#04x} ", end='')
                 log("|", end=' \n')
         log("display = ")
         debug_bitplane(self.display, SCREEN_WIDTH)
@@ -97,12 +98,16 @@ class Chip:
             self.ld_vx_byte(data)
         elif high_nibble == b'\x70\x00':
             self.add_vx_byte(data)
+        elif high_nibble == b'\x80\x00':
+            self.alu(data)
         elif high_nibble == b'\x90\x00':
             self.sne_vx_vy(data)
         elif high_nibble == b'\xa0\x00':
             self.ld_i_addr(data)
         elif high_nibble == b'\xd0\x00':
             self.drw_vx_vy_nibble(data)
+        elif high_nibble == b'\xf0\x00':
+            self.extra(data)
         else:
             raise Exception(f"Unimplemented instruction ({data.hex()} @ pc:{self.pc:#04x})")
 
@@ -164,13 +169,53 @@ class Chip:
     def ld_vx_byte(self, data):
         x = data[0] & 0x0f
         self.V[x] = data[1]
-        show_disasm(f"ld v{x} {data[1]:#04x}")
+        show_disasm(f"ld v{x:01x} {data[1]:#04x}")
 
     def add_vx_byte(self, data):
         x = data[0] & 0x0f
         self.V[x] += data[1]
         self.V[x] &= 0xff
-        show_disasm(f"add v{x} {data[1]:#04x}")
+        show_disasm(f"add v{x:01x} {data[1]:#04x}")
+
+    def alu(self, data): 
+        op = data[1] & 0x0f
+        x = data[0] & 0x0f
+        y = (data[1] & 0xf0) >> 4
+        if op == 0x00: #set
+            self.V[x] = self.V[y]
+            show_disasm(f"ld v{x:01x} v{y:01x}")
+        elif op == 0x01: #or
+            self.V[x] |= self.V[y]
+            show_disasm(f"or v{x:01x} v{y:01x}")
+        elif op == 0x02: #and
+            self.V[x] &= self.V[y]
+            show_disasm(f"and v{x:01x} v{y:01x}")
+        elif op == 0x03: #xor
+            self.V[x] ^= self.V[y]
+            show_disasm(f"xor v{x:01x} v{y:01x}")
+        elif op == 0x04: #add
+            self.V[x] += self.V[y]
+            self.V[0xf] = 0x1 if self.V[x] > 0xff else 0x0
+            self.V[x] &= 0xff
+            show_disasm(f"add v{x:01x} v{y:01x}")
+        elif op == 0x05: #sub
+            self.V[0xf] = 0x1 if self.V[x] > self.V[y] else 0x0
+            self.V[x] = (self.V[x] - self.V[y]) & 0xff
+            show_disasm(f"sub v{x:01x} v{y:01x}")
+        elif op == 0x06: #shr
+            self.V[0xf] = self.V[x] % 2
+            self.V[x] = self.V[x] >> 1
+            show_disasm(f"shr v{x:01x} (, v{y:01x})")
+        elif op == 0x07: #subn
+            self.V[0xf] = 0x1 if self.V[y] > self.V[x] else 0x0
+            self.V[x] = (self.V[y] - self.V[x]) & 0xff
+            show_disasm(f"subn v{x:01x} v{y:01x}")
+        elif op == 0x0e: #shl
+            self.V[0xf] = 1 if self.V[x] & 0b10000000 == 0b10000000 else 0
+            self.V[x] = (self.V[x] << 1) & 0xff
+            show_disasm(f"shl v{x:01x} (, v{y:01x})")
+        else:
+            raise Exception(f"Unrecognized logic or arithmetic instruction instruction {data}")
 
     def sne_vx_vy(self, data):
         x = data[0] & 0x0f
@@ -206,6 +251,30 @@ class Chip:
 
         show_disasm(f"drw v{x} v{y} {n}")
 
+    def extra(self, data):
+        x = data[0] & 0x0f
+        if data[1] == 0x07:
+            self.V[x] = self.delay_timer
+            show_disasm(f"ld v{x}, dt")
+        elif data[1] == 0x0a:
+            self.
+            show_disasm(f"ld v{x} K")
+        elif data[1] == 0x15:
+            ld_dt_vx
+        elif data[1] == 0x18:
+            ld_st_vx
+        elif data[1] == 0x1e:
+            add_i_vx
+        elif data[1] == 0x29:
+            ld_f_vx
+        elif data[1] == 0x33:
+            ld_b_vx
+        elif data[1] == 0x55:
+            ld_[i]_vx
+        elif data[1] == 0x65:
+            ld_vx_[i]
+
+
 
 breakpoints = [0x2be]
 
@@ -235,19 +304,21 @@ if __name__ == '__main__':
                     DEBUG = False
                     done = True
                 elif cmd == 'b':
-                    breakpoints.append(int(input(f"{breakpoints = } : "), 16))
+                    ans = input(f"{breakpoints = } ('clear' to delete all breakpoints, non hex value to exit): ")
+                    if ans == 'clear':
+                        breakpoints = []
+                        print("breakpoints list cleared")
+                    else:
+                        try:
+                            breakpoints.append(int(ans, 16))
+                        except:
+                            pass
+                        else:
+                            print(f"breakpoint added @ {int(ans, 16):#04x}")
                 elif cmd == 'd':
                     chip.dump()
                 elif cmd == 'r':
                     chip.render()
-        data = chip.fetch()
-        try:
-            chip.decode_and_execute(data)
-            IPF += 1
-        except Exception as e:
-            print(traceback.format_exc())
-            DEBUG = True
-        #chip.dump(True, -1, 60)
         elapsed = time()-start_time
         if elapsed > (1/60):
             if chip.redraw:
@@ -255,6 +326,15 @@ if __name__ == '__main__':
             start_time = time()# - (elapsed - 1/60)
             print(f"instructions in last frame = {IPF}, time elapsed: {elapsed}, FPS = {1/elapsed}\r", end='')
             IPF = 0
+
+        data = chip.fetch()
+        #chip.dump(True, -1, 60)
+        try:
+            chip.decode_and_execute(data)
+            IPF += 1
+        except Exception as e:
+            print(traceback.format_exc())
+            DEBUG = True
         if chip.pc in breakpoints:
             print(f"\nHit breakpoint! pc: {chip.pc:#04x}")
             DEBUG = True
